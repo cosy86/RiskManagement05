@@ -1,0 +1,109 @@
+## Generated mta.yaml based on template version 0.4.0
+## appName = RiskManagement05
+## language=nodejs; multitenant=false
+## approuter=
+_schema-version: "3.1"
+ID: RiskManagement05
+version: 1.0.0
+description: "A simple CAP project."
+parameters:
+  enable-parallel-deployments: true
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm install --production
+        - npx -p @sap/cds-dk cds build --production
+
+modules:
+  # --------------------- SERVER MODULE ------------------------
+  - name: RiskManagement05-srv
+    # ------------------------------------------------------------
+    type: nodejs
+    path: gen/srv
+    parameters:
+      buildpack: nodejs_buildpack
+    requires:
+      # Resources extracted from CAP configuration
+      - name: RiskManagement05-db
+      - name: RiskManagement05-uaa
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    # --------------------  APPROUTER -----------------------------
+  - name: RiskManagement05-approuter
+    # ------------------------------------------------------------
+    type: nodejs
+    path: approuter
+    requires:
+      - name: RiskManagement05-uaa
+      - name: srv-api
+        group: destinations
+        properties:
+          forwardAuthToken: true
+          strictSSL: true
+          name: srv-binding
+          url: '~{srv-url}'
+    build-parameters:
+      requires:
+        - name: RiskManagement05-app
+          artifacts:
+            - ./*
+          target-path: resources
+         
+  # --------------------  UI -----------------------------------
+  - name: RiskManagement05-app
+    # ------------------------------------------------------------
+    type: html5
+    path: app
+    build-parameters:
+      supported-platforms: []
+      
+
+  # -------------------- SIDECAR MODULE ------------------------
+  - name: RiskManagement05-db-deployer
+    # ------------------------------------------------------------
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+    requires:
+      # 'hana' and 'xsuaa' resources extracted from CAP configuration
+      - name: RiskManagement05-db
+      - name: RiskManagement05-uaa
+
+resources:
+  # services extracted from CAP configuration
+  # 'service-plan' can be configured via 'cds.requires.<name>.vcap.plan'
+  # ------------------------------------------------------------
+  - name: RiskManagement05-db
+    # ------------------------------------------------------------
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana # or 'hanatrial' on trial landscapes
+      service-plan: hdi-shared
+    properties:
+      hdi-service-name: ${service-name}
+
+  # ------------------------------------------------------------
+  - name: RiskManagement05-uaa
+    # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+
+      config:
+        xsappname: RiskManagement05-${space} #  name + space dependency
+        role-collections:
+          - name: "RiskManager05-${space}"
+            description: Manage Risks
+            role-template-references:
+              - $XSAPPNAME.RiskManager05
+          - name: "RiskViewer05-${space}"
+            description: View Risks
+            role-template-references:
+              - $XSAPPNAME.RiskViewer05
